@@ -361,6 +361,9 @@ def read_batch(request_id: str, response_only: bool = False):
                                     text_content = output_text
                             if text_content:
                                 req["response"] = text_content
+                                usage = body.get("usage", {})
+                                if usage:
+                                    req["usage"] = usage
                                 save_requests(requests)
                                 print(text_content)
                             return
@@ -443,8 +446,11 @@ def read_batch(request_id: str, response_only: bool = False):
                         if not content:
                             content = json.dumps(body, indent=2)
 
-                        # Save response locally
+                        # Save response and usage locally
                         req["response"] = content
+                        usage = body.get("usage", {})
+                        if usage:
+                            req["usage"] = usage
                         save_requests(requests)
 
                         if RICH_AVAILABLE:
@@ -455,7 +461,6 @@ def read_batch(request_id: str, response_only: bool = False):
                             ))
 
                             # Show usage stats
-                            usage = body.get("usage", {})
                             if usage:
                                 input_tokens = usage.get('input_tokens', 0)
                                 output_tokens = usage.get('output_tokens', 0)
@@ -463,7 +468,6 @@ def read_batch(request_id: str, response_only: bool = False):
                                 console.print(f"\n[dim]Tokens: {input_tokens} input + {output_tokens} output = {total} total[/dim]")
                         else:
                             print(f"\nResponse:\n{content}")
-                            usage = body.get("usage", {})
                             if usage:
                                 input_tokens = usage.get('input_tokens', 0)
                                 output_tokens = usage.get('output_tokens', 0)

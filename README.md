@@ -5,7 +5,7 @@ A CLI tool for OpenAI's Batch API. Submit prompts for asynchronous processing at
 ## Installation
 
 ```bash
-pip install openai rich
+pip install openai rich customtkinter
 export OPENAI_API_KEY="your-key-here"
 ```
 
@@ -64,23 +64,24 @@ Shows a table with request ID, batch ID, status, created/completed timestamps, a
 **Options:**
 - `-r, --response-only` - Output only the raw response text (no panels, no metadata)
 
-### GUI (Tkinter)
+### Desktop GUI
 
-This project also includes a simple cross-platform desktop GUI (built with Python Tkinter) for:
-- Creating batch requests
-- Listing and refreshing request statuses
-- Fetching and viewing responses
-
-Launch it with:
+A modern dark-themed desktop application for managing batch requests:
 
 ```bash
 ./oaibatch gui
 ```
 
-Notes:
-- You still must set `OPENAI_API_KEY` in your environment.
-- The existing `./oaibatch create --gui` option is **only** a macOS prompt input dialog; `./oaibatch gui` is the full multi-tab application.
-- If you get an error about Tkinter not being available, install a Python distribution that includes Tk (common fix on macOS: use the official python.org installer).
+**Features:**
+- **Sidebar navigation** - Switch between New Request, Requests list, and Response views
+- **Card-based request list** - Click any request card to view details and fetch responses
+- **Live status refresh** - Pull latest status from the API with one click
+- **Copy to clipboard** - Easily copy responses for use elsewhere
+
+**Notes:**
+- Requires `OPENAI_API_KEY` in your environment
+- The `./oaibatch create --gui` option is a separate macOS-only prompt dialog
+- Built with CustomTkinter for a modern look across platforms
 
 ## How it works
 
@@ -125,8 +126,9 @@ The `-r` / `--response-only` flag is designed for scripting:
 
 - Python 3.8+
 - `openai` >= 1.0.0
-- `rich` >= 13.0.0 (optional, for pretty output)
-- macOS (for `--gui` feature)
+- `rich` >= 13.0.0 (optional, for pretty CLI output)
+- `customtkinter` >= 5.2.0 (for desktop GUI)
+- macOS (for `--gui` create dialog only)
 
 ## License
 
