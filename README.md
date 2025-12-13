@@ -2,6 +2,21 @@
 
 A CLI tool for OpenAI's Batch API. Submit prompts for asynchronous processing at 50% cost savings with 24-hour turnaround.
 
+## Warning: Use at Your Own Risk
+
+**This software interacts with OpenAI's Batch API, which may have bugs that can result in unexpected charges.**
+
+I experienced an issue where a single batch job triggered multiple executions on OpenAI's side. The batch listing showed only one job, but the logs revealed multiple complete executions (each with full input and successful output). I was charged for all of them, and the batch never completed. This appears to be an OpenAI bug, not an issue with this tool.
+
+**Recommendations:**
+- Monitor your OpenAI usage dashboard while jobs are running
+- Set up billing alerts on your OpenAI account
+- Be cautious with expensive models (`gpt-5.2-pro`, `o3-pro`) and high token limits
+- Check logs for duplicate executions if a batch takes unusually long
+- Start with smaller/cheaper requests to verify everything works as expected
+
+This tool is provided as-is with no guarantees. You are responsible for any charges incurred.
+
 ## Installation
 
 ```bash
