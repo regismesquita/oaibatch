@@ -1,6 +1,6 @@
 # oaibatch
 
-A CLI tool for OpenAI's Batch API. Submit prompts for asynchronous processing at 50% cost savings with 24-hour turnaround.
+A CLI tool for OpenAI's Batch API. Submit prompts for asynchronous processing at 50% cost savings with 24-hour turnaround. Usually requests are done in a similar timeframe to the API but it might take up to 24hrs.
 
 ## Warning: Use at Your Own Risk
 
@@ -17,6 +17,11 @@ I experienced an issue where a single batch job triggered multiple executions on
 
 This tool is provided as-is with no guarantees. You are responsible for any charges incurred.
 
+## Screenshots
+<img width="500" height="400" alt="image" src="https://github.com/user-attachments/assets/32f5f88c-5a44-4bcb-a32c-651fb5021bbb" />
+<img width="500" height="400" alt="image" src="https://github.com/user-attachments/assets/bdb07bd3-edb5-44ca-83d8-e75079082ff3" />
+
+
 ## Installation
 
 ```bash
@@ -26,7 +31,15 @@ export OPENAI_API_KEY="your-key-here"
 
 ## Usage
 
-### Create a batch request
+### Desktop GUI
+
+A modern dark-themed desktop application for managing batch requests:
+
+```bash
+./oaibatch gui
+```
+
+### CLI
 
 ```bash
 # From argument
@@ -85,13 +98,6 @@ Shows a table with request ID, batch ID, status, created/completed timestamps, a
 **Options:**
 - `-r, --response-only` - Output only the raw response text (no panels, no metadata)
 
-### Desktop GUI
-
-A modern dark-themed desktop application for managing batch requests:
-
-```bash
-./oaibatch gui
-```
 
 **Features:**
 - **Sidebar navigation** - Switch between New Request, Requests list, and Response views
