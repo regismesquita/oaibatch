@@ -72,7 +72,38 @@ def get_client():
     return OpenAI(api_key=api_key)
 
 
-def create_batch(prompt: str, system_prompt: str = "You are a helpful assistant.", max_tokens: int = 100):
+def get_prompt_from_gui():
+    """Open a macOS GUI dialog to get prompt input."""
+    import subprocess
+
+    script = '''
+    tell application "System Events"
+        activate
+        set dialogResult to display dialog "Enter your prompt:" default answer "" with title "oaibatch" buttons {"Cancel", "OK"} default button "OK"
+        return text returned of dialogResult
+    end tell
+    '''
+
+    try:
+        result = subprocess.run(
+            ["osascript", "-e", script],
+            capture_output=True,
+            text=True
+        )
+        if result.returncode != 0:
+            # User cancelled or error
+            if "User canceled" in result.stderr:
+                print("Cancelled by user.")
+                sys.exit(0)
+            print(f"Error: {result.stderr}", file=sys.stderr)
+            sys.exit(1)
+        return result.stdout.strip()
+    except FileNotFoundError:
+        print("Error: osascript not found. --gui only works on macOS.")
+        sys.exit(1)
+
+
+def create_batch(prompt: str, system_prompt: str = "You are a helpful assistant.", max_tokens: int = 100000):
     """Create a new batch request with the given prompt."""
     client = get_client()
 
@@ -260,7 +291,7 @@ def list_batches():
             print("-" * 100)
 
 
-def read_batch(request_id: str):
+def read_batch(request_id: str, response_only: bool = False):
     """Read the results of a batch request."""
     client = get_client()
     requests = load_requests()
@@ -273,7 +304,9 @@ def read_batch(request_id: str):
             break
 
     if not req:
-        if RICH_AVAILABLE:
+        if response_only:
+            print(f"Error: Request not found: {request_id}", file=sys.stderr)
+        elif RICH_AVAILABLE:
             console.print(f"[red]Request not found: {request_id}[/red]")
         else:
             print(f"Error: Request not found: {request_id}")
@@ -290,10 +323,54 @@ def read_batch(request_id: str):
             req["in_progress_at"] = batch.in_progress_at
         save_requests(requests)
     except Exception as e:
-        if RICH_AVAILABLE:
-            console.print(f"[yellow]Warning: Could not fetch batch status: {e}[/yellow]")
+        if not response_only:
+            if RICH_AVAILABLE:
+                console.print(f"[yellow]Warning: Could not fetch batch status: {e}[/yellow]")
+            else:
+                print(f"Warning: Could not fetch batch status: {e}")
+
+    # Response-only mode: just output the response and exit
+    if response_only:
+        # Check for cached response first
+        if req.get("response"):
+            print(req["response"])
+            return
+
+        # If completed, fetch response
+        if req["status"] == "completed" and req.get("output_file_id"):
+            try:
+                content = client.files.content(req["output_file_id"])
+                output_text = content.text
+                for line in output_text.strip().split("\n"):
+                    if line:
+                        result = json.loads(line)
+                        if result.get("custom_id") == req["id"]:
+                            response = result.get("response", {})
+                            body = response.get("body", {})
+                            output = body.get("output", [])
+                            text_content = None
+                            for item in output:
+                                if item.get("type") == "message":
+                                    for c in item.get("content", []):
+                                        if c.get("type") == "output_text":
+                                            text_content = c.get("text", "")
+                                            break
+                            if not text_content:
+                                output_text = body.get("output_text")
+                                if isinstance(output_text, str):
+                                    text_content = output_text
+                            if text_content:
+                                req["response"] = text_content
+                                save_requests(requests)
+                                print(text_content)
+                            return
+            except Exception as e:
+                print(f"Error: {e}", file=sys.stderr)
+                sys.exit(1)
         else:
-            print(f"Warning: Could not fetch batch status: {e}")
+            print(f"Error: Batch not completed (status: {req['status']})", file=sys.stderr)
+            sys.exit(1)
+        return
 
     # Format timestamps
     created_str = req.get('created_at', 'N/A')[:19].replace("T", " ") if req.get('created_at') else 'N/A'
@@ -356,9 +433,15 @@ def read_batch(request_id: str):
                                         content = c.get("text", "")
                                         break
 
-                        # Fallback: try direct output_text or text field
+                        # Fallback: try direct output_text field (must be string)
                         if not content:
-                            content = body.get("output_text") or body.get("text") or str(body)
+                            output_text = body.get("output_text")
+                            if isinstance(output_text, str):
+                                content = output_text
+
+                        # Last resort: stringify the body for debugging
+                        if not content:
+                            content = json.dumps(body, indent=2)
 
                         # Save response locally
                         req["response"] = content
@@ -442,11 +525,14 @@ Examples:
 
     # Create command
     create_parser = subparsers.add_parser("create", help="Create a new batch request")
-    create_parser.add_argument("prompt", help="The prompt to send")
+    create_parser.add_argument("prompt", nargs="?", default=None,
+                               help="The prompt to send (or read from stdin if not provided)")
     create_parser.add_argument("--system", "-s", default="You are a helpful assistant.",
                                help="System prompt (default: 'You are a helpful assistant.')")
-    create_parser.add_argument("--max-tokens", "-m", type=int, default=100,
-                               help="Max output tokens (default: 100, keep low for testing)")
+    create_parser.add_argument("--max-tokens", "-m", type=int, default=100000,
+                               help="Max output tokens (default: 100000)")
+    create_parser.add_argument("--gui", "-g", action="store_true",
+                               help="Open a GUI dialog to enter the prompt (macOS)")
 
     # List command
     subparsers.add_parser("list", help="List all batch requests")
@@ -454,15 +540,40 @@ Examples:
     # Read command
     read_parser = subparsers.add_parser("read", help="Read batch request results")
     read_parser.add_argument("request_id", help="Request ID or Batch ID to read")
+    read_parser.add_argument("--response-only", "-r", action="store_true",
+                             help="Output only the response text (for piping)")
+
+    subparsers.add_parser("gui", help="Launch the graphical user interface (Tkinter)")
 
     args = parser.parse_args()
 
     if args.command == "create":
-        create_batch(args.prompt, args.system, args.max_tokens)
+        prompt = args.prompt
+        if args.gui:
+            # Get prompt from GUI dialog
+            prompt = get_prompt_from_gui()
+        elif prompt is None:
+            # Read from stdin
+            if sys.stdin.isatty():
+                print("Error: No prompt provided. Pass a prompt as argument, use --gui, or pipe from stdin.")
+                sys.exit(1)
+            prompt = sys.stdin.read().strip()
+        if not prompt:
+            print("Error: Empty prompt.")
+            sys.exit(1)
+        create_batch(prompt, args.system, args.max_tokens)
     elif args.command == "list":
         list_batches()
     elif args.command == "read":
-        read_batch(args.request_id)
+        read_batch(args.request_id, response_only=args.response_only)
+    elif args.command == "gui":
+        try:
+            from oaibatch_gui import main as gui_main
+        except Exception as e:
+            print(f"Error: Could not launch GUI: {e}", file=sys.stderr)
+            print("Tip: Ensure Tkinter is installed/enabled in your Python environment.", file=sys.stderr)
+            sys.exit(1)
+        gui_main()
     else:
         parser.print_help()
 
