@@ -16,6 +16,7 @@ import tempfile
 import uuid
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Dict, Optional
 
 try:
     from openai import OpenAI
@@ -33,12 +34,38 @@ try:
 except ImportError:
     RICH_AVAILABLE = False
 
+from oaibatch_config import (
+    DEFAULT_MODEL,
+    DEFAULT_REASONING_EFFORT,
+    MODEL_PRICING,
+    REASONING_EFFORT_CHOICES,
+    estimate_cost_from_usage,
+    normalize_reasoning_effort,
+)
+
 # Configuration
-MODEL = "gpt-5.2-pro"
 DATA_DIR = Path.home() / ".oaibatch"
 REQUESTS_FILE = DATA_DIR / "requests.json"
 
 console = Console() if RICH_AVAILABLE else None
+
+
+def _format_usage_summary(usage: Dict[str, Any], model: str) -> str:
+    input_tokens = int(usage.get("input_tokens", 0) or 0)
+    output_tokens = int(usage.get("output_tokens", 0) or 0)
+
+    total_raw = usage.get("total_tokens", input_tokens + output_tokens)
+    try:
+        total_tokens = int(total_raw or 0)
+    except (TypeError, ValueError):
+        total_tokens = input_tokens + output_tokens
+
+    cost = estimate_cost_from_usage(usage, model)
+    if cost:
+        _, _, total_cost = cost
+        return f"{input_tokens:,} in + {output_tokens:,} out = {total_tokens:,} tokens (${total_cost:.2f})"
+
+    return f"{input_tokens:,} in + {output_tokens:,} out = {total_tokens:,} tokens"
 
 
 def ensure_data_dir():
@@ -103,25 +130,36 @@ def get_prompt_from_gui():
         sys.exit(1)
 
 
-def create_batch(prompt: str, system_prompt: str = "You are a helpful assistant.", max_tokens: int = 100000):
+def create_batch(
+    prompt: str,
+    system_prompt: str = "You are a helpful assistant.",
+    max_tokens: int = 100000,
+    model: str = DEFAULT_MODEL,
+    reasoning_effort: Optional[str] = DEFAULT_REASONING_EFFORT,
+):
     """Create a new batch request with the given prompt."""
     client = get_client()
 
     # Generate a unique custom_id
     custom_id = f"req-{uuid.uuid4().hex[:8]}"
 
+    effort = normalize_reasoning_effort(reasoning_effort)
+
+    body = {
+        "model": model,
+        "instructions": system_prompt,
+        "input": prompt,
+        "max_output_tokens": max_tokens,
+    }
+    if effort:
+        body["reasoning"] = {"effort": effort}
+
     # Create the batch request structure using Responses API format
     request = {
         "custom_id": custom_id,
         "method": "POST",
         "url": "/v1/responses",
-        "body": {
-            "model": MODEL,
-            "instructions": system_prompt,
-            "input": prompt,
-            "max_output_tokens": max_tokens,
-            "reasoning": {"effort": "xhigh"}
-        }
+        "body": body,
     }
 
     # Write to temporary JSONL file
@@ -161,7 +199,8 @@ def create_batch(prompt: str, system_prompt: str = "You are a helpful assistant.
             "file_id": file_id,
             "prompt": prompt,
             "system_prompt": system_prompt,
-            "model": MODEL,
+            "model": model,
+            "reasoning_effort": effort,
             "max_tokens": max_tokens,
             "status": batch.status,
             "created_at": datetime.now().isoformat(),
@@ -178,7 +217,8 @@ def create_batch(prompt: str, system_prompt: str = "You are a helpful assistant.
                 f"[bold]Request ID:[/bold] {custom_id}\n"
                 f"[bold]Batch ID:[/bold] {batch.id}\n"
                 f"[bold]Status:[/bold] {batch.status}\n"
-                f"[bold]Model:[/bold] {MODEL}",
+                f"[bold]Model:[/bold] {model}\n"
+                f"[bold]Reasoning effort:[/bold] {effort or '-'}",
                 title="Batch Created",
                 border_style="green"
             ))
@@ -187,7 +227,8 @@ def create_batch(prompt: str, system_prompt: str = "You are a helpful assistant.
             print(f"  Request ID: {custom_id}")
             print(f"  Batch ID: {batch.id}")
             print(f"  Status: {batch.status}")
-            print(f"  Model: {MODEL}")
+            print(f"  Model: {model}")
+            print(f"  Reasoning effort: {effort or '-'}")
 
         return custom_id
 
@@ -237,6 +278,8 @@ def list_batches():
         table.add_column("Request ID", style="cyan")
         table.add_column("Batch ID", style="dim")
         table.add_column("Status", style="bold")
+        table.add_column("Model", style="magenta")
+        table.add_column("Effort", style="dim")
         table.add_column("Created", style="dim")
         table.add_column("Completed", style="green")
         table.add_column("Prompt", style="white", max_width=40)
@@ -265,10 +308,16 @@ def list_batches():
             if len(req.get("prompt", "")) > 40:
                 prompt_preview += "..."
 
+            model = req.get("model") or DEFAULT_MODEL
+            effort = req.get("reasoning_effort", DEFAULT_REASONING_EFFORT)
+            effort_display = effort or "-"
+
             table.add_row(
                 req["id"],
                 req["batch_id"][:20] + "..." if len(req.get("batch_id", "")) > 20 else req.get("batch_id", ""),
                 status_style,
+                model,
+                effort_display,
                 created,
                 completed_str,
                 prompt_preview
@@ -282,10 +331,14 @@ def list_batches():
             created = req.get("created_at", "")[:19].replace("T", " ")
             completed_at = req.get("completed_at")
             completed_str = datetime.fromtimestamp(completed_at).strftime("%Y-%m-%d %H:%M:%S") if completed_at else "-"
+            model = req.get("model") or DEFAULT_MODEL
+            effort = req.get("reasoning_effort", DEFAULT_REASONING_EFFORT)
+            effort_display = effort or "-"
             print(f"  ID: {req['id']}")
             print(f"  Batch: {req['batch_id']}")
             print(f"  Status: {req.get('status', 'unknown')}")
-            print(f"  Model: {req.get('model', MODEL)}")
+            print(f"  Model: {model}")
+            print(f"  Effort: {effort_display}")
             print(f"  Created: {created}")
             print(f"  Completed: {completed_str}")
             print(f"  Prompt: {req.get('prompt', '')[:60]}...")
@@ -381,13 +434,18 @@ def read_batch(request_id: str, response_only: bool = False):
     completed_at = req.get("completed_at")
     completed_str = datetime.fromtimestamp(completed_at).strftime("%Y-%m-%d %H:%M:%S") if completed_at else "N/A"
 
+    effort = req.get("reasoning_effort", DEFAULT_REASONING_EFFORT)
+    effort_display = effort or "-"
+    model = req.get("model") or DEFAULT_MODEL
+
     # Display request info
     if RICH_AVAILABLE:
         console.print(Panel(
             f"[bold]Request ID:[/bold] {req['id']}\n"
             f"[bold]Batch ID:[/bold] {req['batch_id']}\n"
             f"[bold]Status:[/bold] {req['status']}\n"
-            f"[bold]Model:[/bold] {req.get('model', MODEL)}\n"
+            f"[bold]Model:[/bold] {model}\n"
+            f"[bold]Reasoning effort:[/bold] {effort_display}\n"
             f"[bold]Created:[/bold] {created_str}\n"
             f"[bold]Completed:[/bold] {completed_str}\n\n"
             f"[bold]System Prompt:[/bold]\n{req.get('system_prompt', 'N/A')}\n\n"
@@ -400,7 +458,8 @@ def read_batch(request_id: str, response_only: bool = False):
         print(f"  Request ID: {req['id']}")
         print(f"  Batch ID: {req['batch_id']}")
         print(f"  Status: {req['status']}")
-        print(f"  Model: {req.get('model', MODEL)}")
+        print(f"  Model: {model}")
+        print(f"  Reasoning effort: {effort_display}")
         print(f"  Created: {created_str}")
         print(f"  Completed: {completed_str}")
         print(f"\n  System Prompt: {req.get('system_prompt', 'N/A')}")
@@ -463,17 +522,13 @@ def read_batch(request_id: str, response_only: bool = False):
 
                             # Show usage stats
                             if usage:
-                                input_tokens = usage.get('input_tokens', 0)
-                                output_tokens = usage.get('output_tokens', 0)
-                                total = usage.get('total_tokens', input_tokens + output_tokens)
-                                console.print(f"\n[dim]Tokens: {input_tokens} input + {output_tokens} output = {total} total[/dim]")
+                                usage_summary = _format_usage_summary(usage, model)
+                                console.print(f"\n[dim]Usage: {usage_summary}[/dim]")
                         else:
                             print(f"\nResponse:\n{content}")
                             if usage:
-                                input_tokens = usage.get('input_tokens', 0)
-                                output_tokens = usage.get('output_tokens', 0)
-                                total = usage.get('total_tokens', input_tokens + output_tokens)
-                                print(f"\nTokens: {input_tokens} input + {output_tokens} output = {total} total")
+                                usage_summary = _format_usage_summary(usage, model)
+                                print(f"\nUsage: {usage_summary}")
 
                         error = result.get("error")
                         if error:
@@ -520,6 +575,7 @@ def main():
 Examples:
   oaibatch create "Hello world!"
   oaibatch create "Explain quantum computing" --system "You are a physics professor"
+  oaibatch create "Summarize this text" --model gpt-5.2 --reasoning-effort medium
   oaibatch list
   oaibatch read req-abc12345
   oaibatch read batch_abc123
@@ -538,6 +594,11 @@ Examples:
                                help="Max output tokens (default: 100000)")
     create_parser.add_argument("--gui", "-g", action="store_true",
                                help="Open a GUI dialog to enter the prompt (macOS)")
+    create_parser.add_argument("--model", choices=sorted(MODEL_PRICING.keys()), default=DEFAULT_MODEL,
+                               help=f"Model to use (default: {DEFAULT_MODEL})")
+    create_parser.add_argument("--reasoning-effort", "--effort", choices=REASONING_EFFORT_CHOICES,
+                               default=DEFAULT_REASONING_EFFORT,
+                               help="Reasoning effort: none, low, medium, high, xhigh (default: xhigh). Use 'none' to disable.")
 
     # List command
     subparsers.add_parser("list", help="List all batch requests")
@@ -566,7 +627,7 @@ Examples:
         if not prompt:
             print("Error: Empty prompt.")
             sys.exit(1)
-        create_batch(prompt, args.system, args.max_tokens)
+        create_batch(prompt, args.system, args.max_tokens, model=args.model, reasoning_effort=args.reasoning_effort)
     elif args.command == "list":
         list_batches()
     elif args.command == "read":

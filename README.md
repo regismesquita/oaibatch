@@ -26,6 +26,10 @@ echo "Write a haiku about coding" | ./oaibatch create
 # With custom system prompt and token limit
 ./oaibatch create "Write a poem" -s "You are a poet" -m 500
 
+# Choose model and reasoning effort
+./oaibatch create "Summarize this text" --model gpt-5.2 --reasoning-effort medium
+./oaibatch create "Deep analysis of X" --model o3-pro --reasoning-effort xhigh
+
 # Using GUI dialog (macOS)
 ./oaibatch create --gui
 ./oaibatch create -g -s "You are a scientist"
@@ -34,6 +38,8 @@ echo "Write a haiku about coding" | ./oaibatch create
 **Options:**
 - `-s, --system` - System prompt (default: "You are a helpful assistant.")
 - `-m, --max-tokens` - Max output tokens (default: 100000)
+- `--model` - Model to use (`gpt-5.2`, `o3-pro`, `gpt-5.2-pro`)
+- `--reasoning-effort, --effort` - Reasoning effort (`none`, `low`, `medium`, `high`, `xhigh`). Use `none` to disable reasoning.
 - `-g, --gui` - Open a macOS GUI dialog to enter the prompt
 
 ### List all requests
@@ -93,9 +99,24 @@ Requests are stored locally in `~/.oaibatch/requests.json` for tracking.
 
 ## Configuration
 
-- **Model**: `gpt-5.2-pro` (using the Responses API)
+- **Model**: Selectable per request (default: `gpt-5.2-pro`)
+  - CLI: `--model`
+  - GUI: model dropdown on the New Request screen
+- **Reasoning effort**: Selectable per request (default: `xhigh`)
+  - CLI: `--reasoning-effort` / `--effort`
+  - GUI: reasoning dropdown on the New Request screen (`none` disables reasoning)
 - **Endpoint**: `/v1/responses`
 - **Completion window**: 24 hours
+
+### Batch pricing (per 1M tokens)
+
+| Model        | Input / 1M | Output / 1M |
+|-------------|------------:|------------:|
+| `gpt-5.2`     | $0.875      | $7.00       |
+| `o3-pro`      | $10.00      | $40.00      |
+| `gpt-5.2-pro` | $10.50      | $84.00      |
+
+Cost estimates shown in the GUI (and in CLI `read` usage output) use the model stored on each request.
 
 ## Example workflow
 

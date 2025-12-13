@@ -18,8 +18,10 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import tempfile
 import threading
+import traceback
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -39,12 +41,19 @@ try:
 except ImportError:
     raise SystemExit("openai package not installed. Run: pip install openai")
 
+from oaibatch_config import (
+    DEFAULT_MODEL,
+    DEFAULT_REASONING_EFFORT,
+    MODEL_PRICING,
+    REASONING_EFFORT_CHOICES,
+    estimate_cost_from_usage,
+    normalize_reasoning_effort,
+)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Configuration
 # ═══════════════════════════════════════════════════════════════════════════════
 
-MODEL = "gpt-5.2-pro"
 DATA_DIR = Path.home() / ".oaibatch"
 REQUESTS_FILE = DATA_DIR / "requests.json"
 
@@ -122,20 +131,26 @@ def _extract_text_from_responses_api_body(body: Dict[str, Any]) -> str:
     return json.dumps(body, indent=2)
 
 
-def create_batch_request(prompt: str, system_prompt: str, max_tokens: int) -> Dict[str, Any]:
+def create_batch_request(prompt: str, system_prompt: str, max_tokens: int, model: str, reasoning_effort: str) -> Dict[str, Any]:
     client = get_client()
     custom_id = f"req-{uuid.uuid4().hex[:8]}"
+
+    effort = normalize_reasoning_effort(reasoning_effort)
+
+    body: Dict[str, Any] = {
+        "model": model,
+        "instructions": system_prompt,
+        "input": prompt,
+        "max_output_tokens": max_tokens,
+    }
+    if effort:
+        body["reasoning"] = {"effort": effort}
+
     request = {
         "custom_id": custom_id,
         "method": "POST",
         "url": "/v1/responses",
-        "body": {
-            "model": MODEL,
-            "instructions": system_prompt,
-            "input": prompt,
-            "max_output_tokens": max_tokens,
-            "reasoning": {"effort": "xhigh"},
-        },
+        "body": body,
     }
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False, encoding="utf-8") as f:
@@ -159,7 +174,8 @@ def create_batch_request(prompt: str, system_prompt: str, max_tokens: int) -> Di
             "file_id": file_id,
             "prompt": prompt,
             "system_prompt": system_prompt,
-            "model": MODEL,
+            "model": model,
+            "reasoning_effort": effort,
             "max_tokens": max_tokens,
             "status": batch.status,
             "created_at": datetime.now().isoformat(),
@@ -290,18 +306,16 @@ def _fmt_usage(req: Dict[str, Any]) -> str:
     if not usage:
         return "-"
 
-    input_tokens = usage.get("input_tokens", 0)
-    output_tokens = usage.get("output_tokens", 0)
-    total_tokens = usage.get("total_tokens", input_tokens + output_tokens)
+    input_tokens = int(usage.get("input_tokens", 0) or 0)
+    output_tokens = int(usage.get("output_tokens", 0) or 0)
+    total_tokens = int(usage.get("total_tokens", input_tokens + output_tokens) or (input_tokens + output_tokens))
 
-    # Batch API pricing for gpt-5.2-pro (per million tokens)
-    INPUT_COST_PER_1M = 10.50
-    OUTPUT_COST_PER_1M = 84.00
+    model = req.get("model") or DEFAULT_MODEL
+    cost = estimate_cost_from_usage(usage, model)
+    if not cost:
+        return f"{input_tokens:,} in + {output_tokens:,} out = {total_tokens:,} tokens"
 
-    input_cost = (input_tokens / 1_000_000) * INPUT_COST_PER_1M
-    output_cost = (output_tokens / 1_000_000) * OUTPUT_COST_PER_1M
-    total_cost = input_cost + output_cost
-
+    _, _, total_cost = cost
     return f"{input_tokens:,} in + {output_tokens:,} out = {total_tokens:,} tokens (${total_cost:.2f})"
 
 
@@ -573,7 +587,7 @@ class OaiBatchGUI(ctk.CTk):
 
         model_label = ctk.CTkLabel(
             info_frame,
-            text=f"Model: {MODEL}",
+            text=f"Default model: {DEFAULT_MODEL}",
             font=CTkFont(size=11),
             text_color=COLORS["text_muted"],
         )
@@ -681,6 +695,87 @@ class OaiBatchGUI(ctk.CTk):
         settings_row = ctk.CTkFrame(form_inner, fg_color="transparent")
         settings_row.pack(fill="x", pady=(0, 16))
 
+        # Model
+        model_frame = ctk.CTkFrame(settings_row, fg_color="transparent")
+        model_frame.pack(side="left", padx=(0, 16))
+
+        model_label = ctk.CTkLabel(
+            model_frame,
+            text="Model",
+            font=CTkFont(size=13, weight="bold"),
+            text_color=COLORS["text_secondary"],
+            anchor="w",
+        )
+        model_label.pack(anchor="w")
+
+        self.model_var = ctk.StringVar(value=DEFAULT_MODEL)
+        self.model_menu = ctk.CTkOptionMenu(
+            model_frame,
+            values=sorted(MODEL_PRICING.keys()),
+            variable=self.model_var,
+            command=lambda _value: self._update_model_pricing_hint(),
+            width=230,
+            height=44,
+            corner_radius=8,
+            fg_color=COLORS["bg_input"],
+            button_color=COLORS["bg_hover"],
+            button_hover_color=COLORS["accent_hover"],
+            text_color=COLORS["text_primary"],
+            dropdown_fg_color=COLORS["bg_card"],
+            dropdown_text_color=COLORS["text_primary"],
+            dropdown_hover_color=COLORS["bg_hover"],
+        )
+        self.model_menu.pack(pady=(8, 0))
+
+        self.model_price_label = ctk.CTkLabel(
+            model_frame,
+            text="",
+            font=CTkFont(size=10),
+            text_color=COLORS["text_muted"],
+            anchor="w",
+        )
+        self.model_price_label.pack(anchor="w", pady=(6, 0))
+
+        # Reasoning effort
+        effort_frame = ctk.CTkFrame(settings_row, fg_color="transparent")
+        effort_frame.pack(side="left", padx=(0, 16))
+
+        effort_label = ctk.CTkLabel(
+            effort_frame,
+            text="Reasoning Effort",
+            font=CTkFont(size=13, weight="bold"),
+            text_color=COLORS["text_secondary"],
+            anchor="w",
+        )
+        effort_label.pack(anchor="w")
+
+        self.reasoning_var = ctk.StringVar(value=DEFAULT_REASONING_EFFORT)
+        self.reasoning_menu = ctk.CTkOptionMenu(
+            effort_frame,
+            values=REASONING_EFFORT_CHOICES,
+            variable=self.reasoning_var,
+            width=190,
+            height=44,
+            corner_radius=8,
+            fg_color=COLORS["bg_input"],
+            button_color=COLORS["bg_hover"],
+            button_hover_color=COLORS["accent_hover"],
+            text_color=COLORS["text_primary"],
+            dropdown_fg_color=COLORS["bg_card"],
+            dropdown_text_color=COLORS["text_primary"],
+            dropdown_hover_color=COLORS["bg_hover"],
+        )
+        self.reasoning_menu.pack(pady=(8, 0))
+
+        effort_hint = ctk.CTkLabel(
+            effort_frame,
+            text="Use \"none\" to disable",
+            font=CTkFont(size=10),
+            text_color=COLORS["text_muted"],
+            anchor="w",
+        )
+        effort_hint.pack(anchor="w", pady=(6, 0))
+
         # Max tokens
         tokens_frame = ctk.CTkFrame(settings_row, fg_color="transparent")
         tokens_frame.pack(side="left")
@@ -706,6 +801,8 @@ class OaiBatchGUI(ctk.CTk):
         )
         self.max_tokens_entry.pack(pady=(8, 0))
         self.max_tokens_entry.insert(0, "100000")
+
+        self._update_model_pricing_hint()
 
         # User prompt
         prompt_label = ctk.CTkLabel(
@@ -755,6 +852,9 @@ class OaiBatchGUI(ctk.CTk):
         system = self.system_entry.get().strip() or "You are a helpful assistant."
         mt_raw = self.max_tokens_entry.get().strip()
 
+        model = (self.model_var.get() or "").strip() or DEFAULT_MODEL
+        reasoning_effort = (self.reasoning_var.get() or "").strip() or DEFAULT_REASONING_EFFORT
+
         if not prompt:
             self.create_status.configure(text="Prompt cannot be empty", text_color=COLORS["error"])
             return
@@ -768,7 +868,7 @@ class OaiBatchGUI(ctk.CTk):
             return
 
         self._run_async(
-            lambda: create_batch_request(prompt, system, max_tokens),
+            lambda: create_batch_request(prompt, system, max_tokens, model, reasoning_effort),
             self._on_create_success,
             self._on_create_error,
             "Creating request..."
@@ -786,6 +886,21 @@ class OaiBatchGUI(ctk.CTk):
             text=f"Error: {str(error)[:50]}",
             text_color=COLORS["error"]
         )
+
+    def _update_model_pricing_hint(self) -> None:
+        def fmt(v: float) -> str:
+            return f"{v:.3f}" if v < 1 else f"{v:.2f}"
+
+        model = (getattr(self, "model_var", None).get() if hasattr(self, "model_var") else DEFAULT_MODEL) or DEFAULT_MODEL
+        pricing = MODEL_PRICING.get(model)
+        if not pricing:
+            if hasattr(self, "model_price_label"):
+                self.model_price_label.configure(text="Pricing: unknown")
+            return
+
+        text = f"Pricing: ${fmt(pricing.input_per_1m)} in / ${fmt(pricing.output_per_1m)} out per 1M tokens"
+        if hasattr(self, "model_price_label"):
+            self.model_price_label.configure(text=text)
 
     # ═══════════════════════════════════════════════════════════════════════════
     # Requests View
@@ -989,11 +1104,16 @@ class OaiBatchGUI(ctk.CTk):
         status = req.get("status", "unknown")
         status_color = STATUS_COLORS.get(status, COLORS["text_muted"])
 
+        model = req.get("model") or DEFAULT_MODEL
+        effort = req.get("reasoning_effort", DEFAULT_REASONING_EFFORT)
+        effort_display = effort or "none"
+
         details_text = (
             f"Request ID: {req.get('id', '-')}\n"
             f"Batch ID: {req.get('batch_id', '-')}\n"
             f"Status: {status.upper()}\n"
-            f"Model: {req.get('model', MODEL)}\n"
+            f"Model: {model}\n"
+            f"Reasoning Effort: {effort_display}\n"
             f"Created: {_fmt_created(req)}\n"
             f"Completed: {_fmt_completed(req)}\n"
             f"Usage: {_fmt_usage(req)}"
@@ -1060,9 +1180,9 @@ class OaiBatchGUI(ctk.CTk):
         def worker():
             try:
                 result = fn()
-                self.after(0, lambda: self._async_success(result, on_success))
+                self.after(0, self._async_success, result, on_success)
             except Exception as e:
-                self.after(0, lambda: self._async_error(e, on_error))
+                self.after(0, self._async_error, e, on_error)
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -1072,6 +1192,12 @@ class OaiBatchGUI(ctk.CTk):
 
     def _async_error(self, error: Exception, on_error):
         self.status_var.set("Ready")
+        try:
+            print("\n[oaibatch_gui] Async error:", file=sys.stderr)
+            traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
+            sys.stderr.flush()
+        except Exception:
+            print(f"[oaibatch_gui] Async error: {error}", file=sys.stderr)
         on_error(error)
 
 
