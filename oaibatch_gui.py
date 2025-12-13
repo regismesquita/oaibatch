@@ -134,6 +134,7 @@ def create_batch_request(prompt: str, system_prompt: str, max_tokens: int) -> Di
             "instructions": system_prompt,
             "input": prompt,
             "max_output_tokens": max_tokens,
+            "reasoning": {"effort": "xhigh"},
         },
     }
 

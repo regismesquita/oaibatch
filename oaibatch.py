@@ -119,7 +119,8 @@ def create_batch(prompt: str, system_prompt: str = "You are a helpful assistant.
             "model": MODEL,
             "instructions": system_prompt,
             "input": prompt,
-            "max_output_tokens": max_tokens
+            "max_output_tokens": max_tokens,
+            "reasoning": {"effort": "xhigh"}
         }
     }
 
