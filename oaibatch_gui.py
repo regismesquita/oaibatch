@@ -32,8 +32,7 @@ try:
     from customtkinter import CTkFont
 except ImportError:
     raise SystemExit(
-        "customtkinter is not installed.\n"
-        "Run: pip install customtkinter\n"
+        "customtkinter is not installed.\nRun: pip install customtkinter\n"
     )
 
 try:
@@ -49,6 +48,8 @@ from oaibatch_config import (
     estimate_cost_from_usage,
     normalize_reasoning_effort,
 )
+
+import oaibatch_config
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Configuration
@@ -92,6 +93,7 @@ STATUS_COLORS = {
 # Data Layer
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 def ensure_data_dir() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     if not REQUESTS_FILE.exists():
@@ -112,9 +114,11 @@ def save_requests(requests: List[Dict[str, Any]]) -> None:
 
 
 def get_client() -> OpenAI:
-    api_key = os.environ.get("OPENAI_API_KEY")
+    api_key = oaibatch_config.get_api_key()
     if not api_key:
-        raise RuntimeError("OPENAI_API_KEY environment variable not set")
+        raise RuntimeError(
+            "No OpenAI API key found. Set OPENAI_API_KEY or save one in Settings."
+        )
     return OpenAI(api_key=api_key)
 
 
@@ -131,7 +135,9 @@ def _extract_text_from_responses_api_body(body: Dict[str, Any]) -> str:
     return json.dumps(body, indent=2)
 
 
-def create_batch_request(prompt: str, system_prompt: str, max_tokens: int, model: str, reasoning_effort: str) -> Dict[str, Any]:
+def create_batch_request(
+    prompt: str, system_prompt: str, max_tokens: int, model: str, reasoning_effort: str
+) -> Dict[str, Any]:
     client = get_client()
     custom_id = f"req-{uuid.uuid4().hex[:8]}"
 
@@ -153,7 +159,9 @@ def create_batch_request(prompt: str, system_prompt: str, max_tokens: int, model
         "body": body,
     }
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False, encoding="utf-8") as f:
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".jsonl", delete=False, encoding="utf-8"
+    ) as f:
         f.write(json.dumps(request) + "\n")
         temp_path = f.name
 
@@ -219,19 +227,27 @@ def refresh_statuses() -> List[Dict[str, Any]]:
 def find_request(request_id_or_batch_id: str) -> Optional[Dict[str, Any]]:
     requests = load_requests()
     for r in requests:
-        if r.get("id") == request_id_or_batch_id or r.get("batch_id") == request_id_or_batch_id:
+        if (
+            r.get("id") == request_id_or_batch_id
+            or r.get("batch_id") == request_id_or_batch_id
+        ):
             return r
     return None
 
 
-def fetch_response_for_request(request_id_or_batch_id: str) -> Tuple[Dict[str, Any], str]:
+def fetch_response_for_request(
+    request_id_or_batch_id: str,
+) -> Tuple[Dict[str, Any], str]:
     client = get_client()
     requests = load_requests()
 
     req = None
     idx = -1
     for i, r in enumerate(requests):
-        if r.get("id") == request_id_or_batch_id or r.get("batch_id") == request_id_or_batch_id:
+        if (
+            r.get("id") == request_id_or_batch_id
+            or r.get("batch_id") == request_id_or_batch_id
+        ):
             req = r
             idx = i
             break
@@ -275,7 +291,9 @@ def fetch_response_for_request(request_id_or_batch_id: str) -> Tuple[Dict[str, A
         break
 
     if response_text is None:
-        raise RuntimeError("Could not locate this request's response in the output JSONL")
+        raise RuntimeError(
+            "Could not locate this request's response in the output JSONL"
+        )
 
     req["response"] = response_text
     if usage_data:
@@ -292,12 +310,12 @@ def _fmt_created(req: Dict[str, Any]) -> str:
 
 def _fmt_completed(req: Dict[str, Any]) -> str:
     completed_at = req.get("completed_at")
-    if completed_at:
-        try:
-            return datetime.fromtimestamp(completed_at).strftime("%Y-%m-%d %H:%M:%S")
-        except Exception:
-            return str(completed_at)
-    return "-"
+    if completed_at is None or completed_at == "":
+        return "-"
+    try:
+        return datetime.fromtimestamp(float(completed_at)).strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return str(completed_at)
 
 
 def _fmt_usage(req: Dict[str, Any]) -> str:
@@ -308,7 +326,10 @@ def _fmt_usage(req: Dict[str, Any]) -> str:
 
     input_tokens = int(usage.get("input_tokens", 0) or 0)
     output_tokens = int(usage.get("output_tokens", 0) or 0)
-    total_tokens = int(usage.get("total_tokens", input_tokens + output_tokens) or (input_tokens + output_tokens))
+    total_tokens = int(
+        usage.get("total_tokens", input_tokens + output_tokens)
+        or (input_tokens + output_tokens)
+    )
 
     model = req.get("model") or DEFAULT_MODEL
     cost = estimate_cost_from_usage(usage, model)
@@ -323,18 +344,13 @@ def _fmt_usage(req: Dict[str, Any]) -> str:
 # Custom Widgets
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class StatusBadge(ctk.CTkFrame):
     """A pill-shaped status badge with colored background."""
 
     def __init__(self, master, status: str = "unknown", **kwargs):
         color = STATUS_COLORS.get(status, COLORS["text_muted"])
-        super().__init__(
-            master,
-            fg_color=color,
-            corner_radius=12,
-            height=24,
-            **kwargs
-        )
+        super().__init__(master, fg_color=color, corner_radius=12, height=24, **kwargs)
 
         self.label = ctk.CTkLabel(
             self,
@@ -362,7 +378,7 @@ class RequestCard(ctk.CTkFrame):
             corner_radius=12,
             border_width=1,
             border_color=COLORS["border"],
-            **kwargs
+            **kwargs,
         )
 
         self.req = req
@@ -386,7 +402,9 @@ class RequestCard(ctk.CTkFrame):
         id_label = ctk.CTkLabel(
             top_row,
             text=req.get("id", "unknown"),
-            font=CTkFont(family="SF Mono, Menlo, Monaco, monospace", size=14, weight="bold"),
+            font=CTkFont(
+                family="SF Mono, Menlo, Monaco, monospace", size=14, weight="bold"
+            ),
             text_color=COLORS["accent"],
             anchor="w",
         )
@@ -495,6 +513,7 @@ class SecondaryButton(ctk.CTkButton):
 # Main Application
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
 class OaiBatchGUI(ctk.CTk):
     def __init__(self):
         super().__init__()
@@ -511,9 +530,16 @@ class OaiBatchGUI(ctk.CTk):
         self._build_sidebar()
         self._build_main_area()
 
-        # Initial view
-        self._show_create_view()
-        self._load_requests()
+        # Startup: gate the UI until an API key is available
+        self._api_key_available = bool(oaibatch_config.get_api_key())
+        self._set_api_key_available(self._api_key_available)
+
+        if self._api_key_available:
+            self._show_create_view()
+            self._load_requests()
+        else:
+            self._show_settings_view()
+            self.status_var.set("API key required. Please set it in Settings.")
 
     def _build_sidebar(self):
         """Build the navigation sidebar."""
@@ -559,6 +585,7 @@ class OaiBatchGUI(ctk.CTk):
             ("create", "✦  New Request", self._show_create_view),
             ("requests", "◉  Requests", self._show_requests_view),
             ("response", "◈  Response", self._show_response_view),
+            ("settings", "⚙  Settings", self._show_settings_view),
         ]
 
         for key, text, command in nav_items:
@@ -595,7 +622,19 @@ class OaiBatchGUI(ctk.CTk):
 
     def _set_active_nav(self, key: str):
         """Update navigation button states."""
+        self._active_nav_key = key
         for nav_key, btn in self.nav_buttons.items():
+            try:
+                if btn.cget("state") == "disabled":
+                    btn.configure(
+                        fg_color="transparent",
+                        text_color=COLORS["text_muted"],
+                    )
+                    continue
+            except Exception:
+                # In case a widget doesn't support cget/state for any reason.
+                pass
+
             if nav_key == key:
                 btn.configure(
                     fg_color=COLORS["bg_hover"],
@@ -606,6 +645,19 @@ class OaiBatchGUI(ctk.CTk):
                     fg_color="transparent",
                     text_color=COLORS["text_secondary"],
                 )
+
+    def _set_api_key_available(self, available: bool) -> None:
+        """Enable/disable non-settings navigation based on API key availability."""
+        self._api_key_available = bool(available)
+
+        for nav_key, btn in self.nav_buttons.items():
+            if nav_key == "settings":
+                btn.configure(state="normal")
+                continue
+            btn.configure(state="normal" if self._api_key_available else "disabled")
+
+        # Refresh nav styling after state changes
+        self._set_active_nav(getattr(self, "_active_nav_key", "settings"))
 
     def _build_main_area(self):
         """Build the main content area."""
@@ -641,6 +693,11 @@ class OaiBatchGUI(ctk.CTk):
 
     def _show_create_view(self):
         """Show the create request view."""
+        if not getattr(self, "_api_key_available", True):
+            self._show_settings_view()
+            self.status_var.set("API key required. Please set it in Settings.")
+            return
+
         self._set_active_nav("create")
         self._clear_content()
 
@@ -769,7 +826,7 @@ class OaiBatchGUI(ctk.CTk):
 
         effort_hint = ctk.CTkLabel(
             effort_frame,
-            text="Use \"none\" to disable",
+            text='Use "none" to disable',
             font=CTkFont(size=10),
             text_color=COLORS["text_muted"],
             anchor="w",
@@ -853,10 +910,14 @@ class OaiBatchGUI(ctk.CTk):
         mt_raw = self.max_tokens_entry.get().strip()
 
         model = (self.model_var.get() or "").strip() or DEFAULT_MODEL
-        reasoning_effort = (self.reasoning_var.get() or "").strip() or DEFAULT_REASONING_EFFORT
+        reasoning_effort = (
+            self.reasoning_var.get() or ""
+        ).strip() or DEFAULT_REASONING_EFFORT
 
         if not prompt:
-            self.create_status.configure(text="Prompt cannot be empty", text_color=COLORS["error"])
+            self.create_status.configure(
+                text="Prompt cannot be empty", text_color=COLORS["error"]
+            )
             return
 
         try:
@@ -864,34 +925,40 @@ class OaiBatchGUI(ctk.CTk):
             if max_tokens <= 0:
                 raise ValueError()
         except ValueError:
-            self.create_status.configure(text="Invalid max tokens", text_color=COLORS["error"])
+            self.create_status.configure(
+                text="Invalid max tokens", text_color=COLORS["error"]
+            )
             return
 
         self._run_async(
-            lambda: create_batch_request(prompt, system, max_tokens, model, reasoning_effort),
+            lambda: create_batch_request(
+                prompt, system, max_tokens, model, reasoning_effort
+            ),
             self._on_create_success,
             self._on_create_error,
-            "Creating request..."
+            "Creating request...",
         )
 
     def _on_create_success(self, record: Dict[str, Any]):
         self.create_status.configure(
-            text=f"Created: {record['id']}",
-            text_color=COLORS["success"]
+            text=f"Created: {record['id']}", text_color=COLORS["success"]
         )
         self._load_requests()
 
     def _on_create_error(self, error: Exception):
         self.create_status.configure(
-            text=f"Error: {str(error)[:50]}",
-            text_color=COLORS["error"]
+            text=f"Error: {str(error)[:50]}", text_color=COLORS["error"]
         )
 
     def _update_model_pricing_hint(self) -> None:
         def fmt(v: float) -> str:
             return f"{v:.3f}" if v < 1 else f"{v:.2f}"
 
-        model = (getattr(self, "model_var", None).get() if hasattr(self, "model_var") else DEFAULT_MODEL) or DEFAULT_MODEL
+        model = (
+            getattr(self, "model_var", None).get()
+            if hasattr(self, "model_var")
+            else DEFAULT_MODEL
+        ) or DEFAULT_MODEL
         pricing = MODEL_PRICING.get(model)
         if not pricing:
             if hasattr(self, "model_price_label"):
@@ -908,6 +975,11 @@ class OaiBatchGUI(ctk.CTk):
 
     def _show_requests_view(self):
         """Show the requests list view."""
+        if not getattr(self, "_api_key_available", True):
+            self._show_settings_view()
+            self.status_var.set("API key required. Please set it in Settings.")
+            return
+
         self._set_active_nav("requests")
         self._clear_content()
 
@@ -982,12 +1054,12 @@ class OaiBatchGUI(ctk.CTk):
             refresh_statuses,
             lambda _: self._populate_requests(),
             lambda e: self.status_var.set(f"Error: {e}"),
-            "Refreshing..."
+            "Refreshing...",
         )
 
     def _load_requests(self):
         """Load requests (used after creating a new one)."""
-        if hasattr(self, 'requests_scroll'):
+        if hasattr(self, "requests_scroll"):
             self._populate_requests()
 
     # ═══════════════════════════════════════════════════════════════════════════
@@ -996,6 +1068,11 @@ class OaiBatchGUI(ctk.CTk):
 
     def _show_response_view(self):
         """Show the response detail view."""
+        if not getattr(self, "_api_key_available", True):
+            self._show_settings_view()
+            self.status_var.set("API key required. Please set it in Settings.")
+            return
+
         self._set_active_nav("response")
         self._clear_content()
 
@@ -1093,7 +1170,7 @@ class OaiBatchGUI(ctk.CTk):
         self.response_textbox.pack(fill="both", expand=True)
 
         # Load selected request if we have one
-        if hasattr(self, 'selected_request'):
+        if hasattr(self, "selected_request"):
             self._load_response_details(self.selected_request)
 
     def _load_response_details(self, req: Dict[str, Any]):
@@ -1118,7 +1195,9 @@ class OaiBatchGUI(ctk.CTk):
             f"Completed: {_fmt_completed(req)}\n"
             f"Usage: {_fmt_usage(req)}"
         )
-        self.details_label.configure(text=details_text, text_color=COLORS["text_secondary"])
+        self.details_label.configure(
+            text=details_text, text_color=COLORS["text_secondary"]
+        )
 
         self.response_textbox.delete("1.0", "end")
         if req.get("response"):
@@ -1155,7 +1234,7 @@ class OaiBatchGUI(ctk.CTk):
             lambda: fetch_response_for_request(rid),
             on_success,
             lambda e: self.status_var.set(f"Error: {e}"),
-            "Fetching response..."
+            "Fetching response...",
         )
 
     def _on_copy_response(self):
@@ -1168,6 +1247,136 @@ class OaiBatchGUI(ctk.CTk):
         self.clipboard_clear()
         self.clipboard_append(text)
         self.status_var.set("Copied to clipboard!")
+
+    def _show_settings_view(self):
+        """Show the settings view (API key configuration)."""
+        self._set_active_nav("settings")
+        self._clear_content()
+
+        # Header
+        header = ctk.CTkLabel(
+            self.content_frame,
+            text="Settings",
+            font=CTkFont(size=28, weight="bold"),
+            text_color=COLORS["text_primary"],
+            anchor="w",
+        )
+        header.pack(fill="x", pady=(0, 24))
+
+        card = ctk.CTkFrame(
+            self.content_frame,
+            fg_color=COLORS["bg_card"],
+            corner_radius=16,
+            border_width=1,
+            border_color=COLORS["border"],
+        )
+        card.pack(fill="both", expand=True)
+
+        inner = ctk.CTkFrame(card, fg_color="transparent")
+        inner.pack(fill="both", expand=True, padx=24, pady=24)
+
+        hint = ctk.CTkLabel(
+            inner,
+            text=(
+                "Enter your OpenAI API key. It will be stored locally in:\n"
+                f"{oaibatch_config.CONFIG_FILE}\n\n"
+                "Note: OPENAI_API_KEY (environment variable) overrides the saved key."
+            ),
+            font=CTkFont(size=12),
+            text_color=COLORS["text_muted"],
+            anchor="w",
+            justify="left",
+        )
+        hint.pack(fill="x", pady=(0, 16))
+
+        key_label = ctk.CTkLabel(
+            inner,
+            text="API Key",
+            font=CTkFont(size=13, weight="bold"),
+            text_color=COLORS["text_secondary"],
+            anchor="w",
+        )
+        key_label.pack(fill="x")
+
+        self.api_key_entry = ctk.CTkEntry(
+            inner,
+            placeholder_text="sk-...",
+            font=CTkFont(size=14),
+            fg_color=COLORS["bg_input"],
+            border_color=COLORS["border"],
+            text_color=COLORS["text_primary"],
+            placeholder_text_color=COLORS["text_muted"],
+            height=44,
+            corner_radius=8,
+            show="*",
+        )
+        self.api_key_entry.pack(fill="x", pady=(8, 16))
+
+        row = ctk.CTkFrame(inner, fg_color="transparent")
+        row.pack(fill="x", pady=(0, 8))
+
+        save_btn = GlowButton(
+            row,
+            text="Save Key",
+            width=140,
+            command=self._on_save_api_key,
+        )
+        save_btn.pack(side="left")
+
+        self.settings_status = ctk.CTkLabel(
+            row,
+            text="",
+            font=CTkFont(size=13),
+            text_color=COLORS["text_muted"],
+        )
+        self.settings_status.pack(side="left", padx=(16, 0))
+
+        # If a key is already available, reflect that
+        if oaibatch_config.get_api_key():
+            self.settings_status.configure(
+                text="API key is configured", text_color=COLORS["success"]
+            )
+        else:
+            self.settings_status.configure(
+                text="API key required to use the app", text_color=COLORS["warning"]
+            )
+
+    def _on_save_api_key(self):
+        """Validate and persist the API key."""
+        key = ""
+        try:
+            key = (self.api_key_entry.get() or "").strip()
+        except Exception:
+            key = ""
+
+        if not key:
+            self.settings_status.configure(
+                text="API key cannot be empty", text_color=COLORS["error"]
+            )
+            return
+        if any(ch.isspace() for ch in key):
+            self.settings_status.configure(
+                text="API key cannot contain whitespace", text_color=COLORS["error"]
+            )
+            return
+
+        try:
+            oaibatch_config.save_config(key)
+        except Exception as e:
+            self.settings_status.configure(
+                text=f"Error saving key: {e}", text_color=COLORS["error"]
+            )
+            return
+
+        # Clear entry for privacy after saving
+        try:
+            self.api_key_entry.delete(0, "end")
+        except Exception:
+            pass
+
+        self.settings_status.configure(text="Key saved", text_color=COLORS["success"])
+        self._set_api_key_available(bool(oaibatch_config.get_api_key()))
+        self.status_var.set("Ready")
 
     # ═══════════════════════════════════════════════════════════════════════════
     # Async Helpers
@@ -1194,7 +1403,9 @@ class OaiBatchGUI(ctk.CTk):
         self.status_var.set("Ready")
         try:
             print("\n[oaibatch_gui] Async error:", file=sys.stderr)
-            traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
+            traceback.print_exception(
+                type(error), error, error.__traceback__, file=sys.stderr
+            )
             sys.stderr.flush()
         except Exception:
             print(f"[oaibatch_gui] Async error: {error}", file=sys.stderr)
@@ -1204,6 +1415,7 @@ class OaiBatchGUI(ctk.CTk):
 # ═══════════════════════════════════════════════════════════════════════════════
 # Entry Point
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 def main() -> None:
     # Set appearance mode

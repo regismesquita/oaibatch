@@ -43,6 +43,8 @@ from oaibatch_config import (
     normalize_reasoning_effort,
 )
 
+import oaibatch_config
+
 # Configuration
 DATA_DIR = Path.home() / ".oaibatch"
 REQUESTS_FILE = DATA_DIR / "requests.json"
@@ -92,9 +94,12 @@ def save_requests(requests):
 
 def get_client():
     """Get OpenAI client."""
-    api_key = os.environ.get("OPENAI_API_KEY")
+    api_key = oaibatch_config.get_api_key()
     if not api_key:
-        print("Error: OPENAI_API_KEY environment variable not set")
+        print(
+            "Error: No API key found. Set OPENAI_API_KEY or save one to "
+            f"{oaibatch_config.CONFIG_FILE}"
+        )
         sys.exit(1)
     return OpenAI(api_key=api_key)
 
