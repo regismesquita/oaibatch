@@ -36,6 +36,7 @@ Package.resolved
 
 ## Archives and app bundles
 *.app
+*.dmg
 *.ipa
 *.dSYM.zip
 *.dSYM/
