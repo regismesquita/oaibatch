@@ -1,2 +1,66 @@
+# Python
 __pycache__/
 *.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Swift/Xcode
+## Build folders
+DerivedData/
+*.build/
+
+## Xcode user data
+*.xcuserstate
+*.xcuserdata/
+xcuserdata/
+
+## Xcode workspace settings (keep .xcworkspace/contents.xcworkspacedata)
+*.xcworkspace/*
+!*.xcworkspace/contents.xcworkspacedata
+
+## Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+## macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+## Archives and app bundles
+*.app
+*.ipa
+*.dSYM.zip
+*.dSYM/
+
+## Playground
+timeline.xctimeline
+playground.xcworkspace
+
+## Code coverage
+*.gcno
+*.gcda
+*.profraw
+*.profdata
+
+## Fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
+
+## CocoaPods
+Pods/
+*.xcworkspace
+Podfile.lock
+
+## Carthage
+Carthage/Build/
+Carthage/Checkouts/
