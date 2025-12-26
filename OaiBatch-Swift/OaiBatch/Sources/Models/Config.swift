@@ -57,8 +57,8 @@ enum Config {
         "o4-mini": ["low", "medium", "high", "xhigh"],
 
         // GPT-5.2 family (conservative default: allow up to high)
-        "gpt-5.2": ["low", "medium", "high"],
-        "gpt-5.2-pro": ["low", "medium", "high"],
+        "gpt-5.2": ["low", "medium", "high", "xhigh"],
+        "gpt-5.2-pro": ["low", "medium", "high", "xhigh"],
     ]
 
     // MARK: - API Configuration
