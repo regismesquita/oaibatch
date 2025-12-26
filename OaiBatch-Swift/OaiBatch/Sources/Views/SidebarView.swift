@@ -49,6 +49,7 @@ enum NavigationItem: String, CaseIterable, Identifiable, Hashable {
 struct SidebarView: View {
     @Binding var selection: NavigationItem?
     var isAPIKeyAvailable: Bool
+    var onRequestsTapped: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -74,6 +75,9 @@ struct SidebarView: View {
                         isEnabled: item == .settings || isAPIKeyAvailable
                     ) {
                         selection = item
+                        if item == .requests {
+                            onRequestsTapped?()
+                        }
                     }
                 }
             }
@@ -199,14 +203,16 @@ struct SidebarView_Previews: PreviewProvider {
             // API key available
             SidebarView(
                 selection: .constant(.requests),
-                isAPIKeyAvailable: true
+                isAPIKeyAvailable: true,
+                onRequestsTapped: { }
             )
             .previewDisplayName("API Key Available")
 
             // API key not available
             SidebarView(
                 selection: .constant(.settings),
-                isAPIKeyAvailable: false
+                isAPIKeyAvailable: false,
+                onRequestsTapped: { }
             )
             .previewDisplayName("API Key Missing")
         }

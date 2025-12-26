@@ -18,6 +18,9 @@ struct CreateRequestView: View {
     @State private var maxTokensText = "100000"
     @State private var selectedReasoningEffort = Config.DEFAULT_REASONING_EFFORT
 
+    @State private var webSearchEnabled = false
+    @State private var webSearchContextSize = Config.DEFAULT_WEB_SEARCH_CONTEXT_SIZE
+
     // UI state
     @State private var isSubmitting = false
     @State private var statusMessage: String?
@@ -141,6 +144,46 @@ struct CreateRequestView: View {
                         Spacer()
                     }
 
+                    VStack(alignment: .leading, spacing: 10) {
+                        Toggle(isOn: $webSearchEnabled) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Enable Web Search")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(AppColors.textSecondary)
+                                Text("Adds the Responses API web_search tool to this request.")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(AppColors.textMuted)
+                            }
+                        }
+                        .toggleStyle(.switch)
+
+                        if webSearchEnabled {
+                            HStack(spacing: 12) {
+                                Text("Search Context Size")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(AppColors.textSecondary)
+
+                                Picker("Search Context Size", selection: $webSearchContextSize) {
+                                    ForEach(Config.WEB_SEARCH_CONTEXT_SIZES, id: \.self) { size in
+                                        Text(size).tag(size)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .labelsHidden()
+                                .frame(width: 140, height: 32)
+                                .background(AppColors.bgInput)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(AppColors.border, lineWidth: 1)
+                                )
+
+                                Spacer()
+                            }
+                        }
+                    }
+                    .padding(.top, 4)
+
                     // User Prompt
                     FormField(label: "Your Prompt") {
                         TextEditor(text: $userPrompt)
@@ -247,8 +290,7 @@ struct CreateRequestView: View {
 
         Task {
             do {
-                // Normalize reasoning effort - pass nil if "none"
-                let reasoningEffort = Config.normalizeReasoningEffort(selectedReasoningEffort)
+                let reasoningEffort = Config.normalizeReasoningEffort(selectedReasoningEffort, model: selectedModel)
 
                 let request = try await service.createBatchRequest(
                     prompt: prompt,
@@ -257,7 +299,9 @@ struct CreateRequestView: View {
                         : systemPrompt,
                     maxTokens: maxTokens,
                     model: selectedModel,
-                    reasoningEffort: reasoningEffort
+                    reasoningEffort: reasoningEffort,
+                    webSearchEnabled: webSearchEnabled,
+                    webSearchContextSize: webSearchContextSize
                 )
 
                 await MainActor.run {

@@ -40,15 +40,26 @@ enum Config {
     }
 
     /// Models that support reasoning effort
-    static let reasoningModels: Set<String> = ["o3", "o3-pro", "o4-mini"]
+    static let reasoningModels: Set<String> = ["o3", "o3-pro", "o4-mini", "gpt-5.2", "gpt-5.2-pro"]
 
-    // MARK: - Reasoning Configuration
-
-    /// Available reasoning effort levels
+    /// Available reasoning effort levels (UI choices)
     static let REASONING_EFFORT_CHOICES = ["none", "low", "medium", "high", "xhigh"]
 
     /// Default reasoning effort for new requests
     static let DEFAULT_REASONING_EFFORT = "xhigh"
+
+    /// Supported reasoning effort levels per model (used to avoid silent fallback/defaults)
+    /// Note: If a model does not support "xhigh", we downshift to "high".
+    static let REASONING_EFFORT_SUPPORTED_BY_MODEL: [String: Set<String>] = [
+        // Reasoning-first models
+        "o3": ["low", "medium", "high", "xhigh"],
+        "o3-pro": ["low", "medium", "high", "xhigh"],
+        "o4-mini": ["low", "medium", "high", "xhigh"],
+
+        // GPT-5.2 family (conservative default: allow up to high)
+        "gpt-5.2": ["low", "medium", "high"],
+        "gpt-5.2-pro": ["low", "medium", "high"],
+    ]
 
     // MARK: - API Configuration
 
@@ -60,6 +71,9 @@ enum Config {
 
     /// Batch completion window
     static let COMPLETION_WINDOW = "24h"
+
+    static let WEB_SEARCH_CONTEXT_SIZES = ["low", "medium", "high"]
+    static let DEFAULT_WEB_SEARCH_CONTEXT_SIZE = "medium"
 
     // MARK: - Storage Configuration
 
@@ -100,6 +114,27 @@ enum Config {
         }
 
         return value
+    }
+
+    static func normalizeReasoningEffort(_ effort: String?, model: String) -> String? {
+        guard let normalized = normalizeReasoningEffort(effort) else { return nil }
+
+        // If we don't know the model's support set, pass through (best-effort).
+        guard let supported = REASONING_EFFORT_SUPPORTED_BY_MODEL[model] else {
+            return normalized
+        }
+
+        if supported.contains(normalized) {
+            return normalized
+        }
+
+        // Downshift xhigh -> high if needed (common case).
+        if normalized == "xhigh", supported.contains("high") {
+            return "high"
+        }
+
+        // Otherwise: disable rather than sending an invalid value.
+        return nil
     }
 
     /// Check if a reasoning effort value is valid

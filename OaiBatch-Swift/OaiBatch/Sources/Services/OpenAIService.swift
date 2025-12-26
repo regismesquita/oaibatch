@@ -40,21 +40,59 @@ actor OpenAIService {
         systemPrompt: String,
         maxTokens: Int,
         model: String,
-        reasoningEffort: String?
+        reasoningEffort: String?,
+        webSearchEnabled: Bool,
+        webSearchContextSize: String
     ) async throws -> BatchRequest {
         let customId = BatchRequest.generateId()
 
-        let normalizedEffort = Config.normalizeReasoningEffort(reasoningEffort)
+        let normalizedEffort = Config.normalizeReasoningEffort(reasoningEffort, model: model)
 
         var body: [String: Any] = [
             "model": model,
-            "instructions": systemPrompt,
-            "input": prompt,
+            "input": [
+                [
+                    "role": "developer",
+                    "content": [
+                        [
+                            "type": "input_text",
+                            "text": systemPrompt
+                        ]
+                    ]
+                ],
+                [
+                    "role": "user",
+                    "content": [
+                        [
+                            "type": "input_text",
+                            "text": prompt
+                        ]
+                    ]
+                ]
+            ],
+            "text": [
+                "format": [
+                    "type": "text"
+                ]
+            ],
             "max_output_tokens": maxTokens
         ]
 
+        // Send reasoning.effort when user selected it (lets logs reflect xhigh/high instead of defaulting to "medium")
         if let effort = normalizedEffort, Config.isReasoningModel(model) {
             body["reasoning"] = ["effort": effort]
+        }
+
+        if webSearchEnabled {
+            body["tools"] = [
+                [
+                    "type": "web_search",
+                    "user_location": [
+                        "type": "approximate"
+                    ],
+                    "search_context_size": webSearchContextSize
+                ]
+            ]
         }
 
         let batchRequestLine: [String: Any] = [
@@ -86,6 +124,8 @@ actor OpenAIService {
             model: model,
             reasoningEffort: normalizedEffort,
             maxTokens: maxTokens,
+            webSearchEnabled: webSearchEnabled,
+            webSearchContextSize: webSearchEnabled ? webSearchContextSize : nil,
             status: BatchStatus(from: batchResponse.status),
             createdAt: createdAt,
             completedAt: nil,
@@ -246,7 +286,7 @@ actor OpenAIService {
         let body: [String: Any] = [
             "input_file_id": inputFileId,
             "endpoint": endpoint,
-            "completion_window": "24h"
+            "completion_window": Config.COMPLETION_WINDOW
         ]
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)

@@ -23,7 +23,8 @@ struct ContentView: View {
         NavigationSplitView {
             SidebarView(
                 selection: $selection,
-                isAPIKeyAvailable: isApiKeyAvailable
+                isAPIKeyAvailable: isApiKeyAvailable,
+                onRequestsTapped: { selectedRequest = nil }
             )
         } detail: {
             detailView

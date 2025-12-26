@@ -115,6 +115,12 @@ struct BatchRequest: Codable, Identifiable, Equatable {
     /// Maximum output tokens
     var maxTokens: Int
 
+    /// Whether this request enabled the web_search tool
+    var webSearchEnabled: Bool
+
+    /// Web search context size (only meaningful when webSearchEnabled == true)
+    var webSearchContextSize: String?
+
     /// Current batch status
     var status: BatchStatus
 
@@ -145,6 +151,8 @@ struct BatchRequest: Codable, Identifiable, Equatable {
         case model
         case reasoningEffort = "reasoning_effort"
         case maxTokens = "max_tokens"
+        case webSearchEnabled = "web_search_enabled"
+        case webSearchContextSize = "web_search_context_size"
         case status
         case createdAt = "created_at"
         case completedAt = "completed_at"
@@ -163,6 +171,8 @@ struct BatchRequest: Codable, Identifiable, Equatable {
         model: String,
         reasoningEffort: String?,
         maxTokens: Int,
+        webSearchEnabled: Bool = false,
+        webSearchContextSize: String? = nil,
         status: BatchStatus,
         createdAt: String,
         completedAt: Double? = nil,
@@ -179,6 +189,8 @@ struct BatchRequest: Codable, Identifiable, Equatable {
         self.model = model
         self.reasoningEffort = reasoningEffort
         self.maxTokens = maxTokens
+        self.webSearchEnabled = webSearchEnabled
+        self.webSearchContextSize = webSearchContextSize
         self.status = status
         self.createdAt = createdAt
         self.completedAt = completedAt
@@ -199,6 +211,10 @@ struct BatchRequest: Codable, Identifiable, Equatable {
         model = try container.decode(String.self, forKey: .model)
         reasoningEffort = try container.decodeIfPresent(String.self, forKey: .reasoningEffort)
         maxTokens = try container.decode(Int.self, forKey: .maxTokens)
+
+        webSearchEnabled = try container.decodeIfPresent(Bool.self, forKey: .webSearchEnabled) ?? false
+        webSearchContextSize = try container.decodeIfPresent(String.self, forKey: .webSearchContextSize)
+
         createdAt = try container.decode(String.self, forKey: .createdAt)
         completedAt = try container.decodeIfPresent(Double.self, forKey: .completedAt)
         inProgressAt = try container.decodeIfPresent(Double.self, forKey: .inProgressAt)
@@ -222,6 +238,10 @@ struct BatchRequest: Codable, Identifiable, Equatable {
         try container.encode(model, forKey: .model)
         try container.encodeIfPresent(reasoningEffort, forKey: .reasoningEffort)
         try container.encode(maxTokens, forKey: .maxTokens)
+
+        try container.encode(webSearchEnabled, forKey: .webSearchEnabled)
+        try container.encodeIfPresent(webSearchContextSize, forKey: .webSearchContextSize)
+
         try container.encode(status.rawValue, forKey: .status)
         try container.encode(createdAt, forKey: .createdAt)
         try container.encodeIfPresent(completedAt, forKey: .completedAt)

@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import AppKit
 
 struct RequestsListView: View {
     @EnvironmentObject var dataStore: DataStore
@@ -153,6 +154,21 @@ struct RequestsListView: View {
                                 NSPasteboard.general.setString(request.batchId, forType: .string)
                             }
                         }
+
+                        Divider()
+                        Button("Copy User Prompt") {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(request.prompt, forType: .string)
+                        }
+                        Button("Copy System Prompt") {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(request.systemPrompt, forType: .string)
+                        }
+                        Button("Copy Full Prompt") {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(combinedPrompt(for: request), forType: .string)
+                        }
+
                         Divider()
                         Button("Delete", role: .destructive) {
                             dataStore.deleteRequest(byId: request.id)
@@ -198,6 +214,16 @@ struct RequestsListView: View {
                 }
             }
         }
+    }
+
+    private func combinedPrompt(for request: BatchRequest) -> String {
+        """
+        SYSTEM:
+        \(request.systemPrompt)
+
+        USER:
+        \(request.prompt)
+        """
     }
 }
 
