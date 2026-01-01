@@ -3,7 +3,7 @@
 //  OaiBatch
 //
 //  Dark theme styling for OaiBatch macOS app.
-//  Matches the Python CustomTkinter GUI color palette.
+//  Matches the app's UI color palette.
 //
 
 import SwiftUI
@@ -41,7 +41,7 @@ extension Color {
 
 // MARK: - App Colors
 
-/// Application color palette matching the Python GUI theme
+/// Application color palette used throughout the app
 enum AppColors {
     // Background colors
     static let bgDark = Color(hex: "#0d1117")

@@ -3,7 +3,7 @@
 //  OaiBatch
 //
 //  Navigation sidebar for the macOS app.
-//  Matches the Python CustomTkinter GUI sidebar design.
+//  Matches the app's sidebar design.
 //
 
 import SwiftUI
@@ -30,7 +30,7 @@ enum NavigationItem: String, CaseIterable, Identifiable, Hashable {
         }
     }
 
-    /// Unicode symbol prefix matching the Python GUI style
+    /// Unicode symbol prefix matching the sidebar style
     var symbolPrefix: String {
         switch self {
         case .create:

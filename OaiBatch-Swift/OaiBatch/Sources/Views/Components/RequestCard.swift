@@ -131,7 +131,7 @@ struct RequestCard: View {
                 id: "req-11111111",
                 batchId: "batch_ghi789",
                 fileId: "file_def",
-                prompt: "Generate a Python script for data analysis.",
+                prompt: "Generate a script for data analysis.",
                 systemPrompt: "You are a coding assistant.",
                 model: "gpt-5.2",
                 reasoningEffort: nil,
