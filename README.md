@@ -8,6 +8,8 @@ A CLI tool for OpenAI's Batch API. Submit prompts for asynchronous processing at
 
 I experienced an issue where a single batch job triggered multiple executions on OpenAI's side. The batch listing showed only one job, but the logs revealed multiple complete executions (each with full input and successful output). I was charged for all of them, and the batch never completed. This appears to be an OpenAI bug, not an issue with this tool.
 
+- I contacted OpenAI about the above and I noticed that on the next day I was billed the right amount, so apparently they have a cron or something fixing the batch cost overnight... so you might expect to see a single batch job listed, lot of requests on the logs, usage will show a higher than expected billing cost, it should be fixed overnight and everything will be back to normal. I am still keeping a close eye on it.
+
 **Recommendations:**
 - Monitor your OpenAI usage dashboard while jobs are running
 - Set up billing alerts on your OpenAI account
