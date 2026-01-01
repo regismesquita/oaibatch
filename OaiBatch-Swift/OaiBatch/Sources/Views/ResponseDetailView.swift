@@ -141,7 +141,7 @@ struct ResponseDetailView: View {
             setupService()
             loadFromSelection()
         }
-        .onChange(of: selectedRequest) { _ in
+        .onChange(of: selectedRequest) {
             loadFromSelection()
         }
     }

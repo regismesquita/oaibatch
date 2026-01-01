@@ -118,7 +118,7 @@ struct SettingsView: View {
         .onAppear {
             updateStatusMessage()
         }
-        .onChange(of: dataStore.apiKey) { _ in
+        .onChange(of: dataStore.apiKey) {
             updateStatusMessage()
         }
     }

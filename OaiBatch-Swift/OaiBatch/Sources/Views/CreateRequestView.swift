@@ -249,7 +249,7 @@ struct CreateRequestView: View {
         .onAppear {
             initializeService()
         }
-        .onChange(of: dataStore.apiKey) { _ in
+        .onChange(of: dataStore.apiKey) {
             initializeService()
         }
     }
